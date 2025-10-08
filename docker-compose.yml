@@ -5,35 +5,41 @@
 # Youtube: www.youtube.com/@guilherme_laz  
 # Curso completo: www.curson8n.com.br      
 ############################################
+# AJUSTADO PARA PRODUÇÃO - DIGITAL OCEAN
+############################################
 
 services:
   redis:
     image: redis:latest
     platform: linux/amd64
-    command: redis-server --requirepass default
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     environment:
-      REDIS_USER: default
-      REDIS_PASSWORD: default
-    ports:
-      - "6379:6379"
+      REDIS_USER: ${REDIS_USER}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - waha-network
+    restart: unless-stopped
+    # SEGURANÇA: Porta NÃO exposta publicamente - apenas acesso interno
 
   postgres:
     image: postgres:latest
     platform: linux/amd64
     environment:
-      POSTGRES_USER: default
-      POSTGRES_PASSWORD: default
-      POSTGRES_DB: default
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - waha-network
+    restart: unless-stopped
+    # SEGURANÇA: Porta NÃO exposta publicamente - apenas acesso interno
 
   waha:
     image: devlikeapro/waha:latest
     platform: linux/amd64
     environment:
-      WHATSAPP_HOOK_URL: http://host.docker.internal:5678/webhook/webhook
+      WHATSAPP_HOOK_URL: http://n8n:5678/webhook/webhook
       WHATSAPP_DEFAULT_ENGINE: GOWS
       WHATSAPP_HOOK_EVENTS: message
     volumes:
@@ -41,20 +47,42 @@ services:
       - waha_media:/app/.media
     ports:
       - "3000:3000"
+    networks:
+      - waha-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - n8n
 
   n8n:
     image: n8nio/n8n:latest
     platform: linux/amd64
     environment:
-      WEBHOOK_URL: http://host.docker.internal:5678
-      N8N_HOST: host.docker.internal
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
+      N8N_HOST: ${N8N_HOST:-localhost}
       GENERIC_TIMEZONE: America/Sao_Paulo
-      N8N_LOG_LEVEL: debug
+      N8N_LOG_LEVEL: info
       N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE: true
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - n8n_data:/home/node/.n8n
     ports:
       - "5678:5678"
+    networks:
+      - waha-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+
+networks:
+  waha-network:
+    driver: bridge
 
 volumes:
   pgdata:
